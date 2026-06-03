@@ -1,0 +1,4 @@
+base_config: configs/default.yaml
+infer:
+  batch_size: 16
+  threshold: 0.5
