@@ -11,7 +11,11 @@ PPI-Sifter/
 │       ├── pairs/
 │       └── splits/
 ├── docs/
-│   └── PPI-Sifter_项目设计书-0603-残基互作.md
+│   ├── PPI-Sifter-Model-Architecture/
+│   │   ├── PPI-Sifter-Model-Architecture.ai
+│   │   └── PPI-Sifter-Model-Architecture.png
+│   ├── references.txt
+│   └── PPI-Sifter 项目设计书（基于B-PPI版）.md
 ├── ppisifter/
 │   ├── __init__.py
 │   ├── constants.py
