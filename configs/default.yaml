@@ -1,73 +1,41 @@
-project:
-  seed: 42
-  device: cuda
+seed: 42
+device: cuda
+num_workers: 0
 
-data:
-  biogrid_csv: data/BIOGRID/BIOGRID-ALL.csv
-  embeddings_dir: data/BIOGRID/embeddings
-  merged_embeddings_path: data/BIOGRID/embeddings/merged_embeddings.pt
-  pairs_dir: data/BIOGRID/pairs
-  splits_dir: data/BIOGRID/splits
-  all_pairs_csv: data/BIOGRID/pairs/all_pairs.csv
-  train_csv: data/BIOGRID/splits/train.csv
-  valid_csv: data/BIOGRID/splits/valid.csv
-  test_csv: data/BIOGRID/splits/test.csv
-  id_columns:
-    - protein_a
-    - protein_b
-  label_column: label
-  positive_ratio: 1
-  negative_ratio: 10
-  split_strategy: protein_disjoint
-  train_ratio: 0.8
-  valid_ratio: 0.1
-  test_ratio: 0.1
-  min_residue_len: 16
-  max_residue_len: 1022
-  embedding_suffix: .residue_emb.npy
-  cache_in_memory: false
-  num_workers: 0
+paths:
+  embeddings_pt: data/BIOGRID/embeddings/all_residue_embeddings.pt
+  train_csv: data/BIOGRID/pairs/train.csv
+  valid_csv: data/BIOGRID/pairs/valid.csv
+  test_csv: data/BIOGRID/pairs/test.csv
+  checkpoint_dir: outputs/checkpoints
+  pred_dir: outputs/preds
+  interpret_dir: outputs/interpret
 
 model:
   input_dim: 1152
   proj_dim: 256
-  pair_hidden_dim: 512
-  attention_dim: 128
-  attention_heads: 4
-  dropout: 0.2
-  max_length: 512
-  top_k_residue_pairs: 50
-  fast_filter_threshold: 0.25
+  num_heads: 2
+  dropout: 0.25
+  attn_dropout: 0.1
+  ffn_hidden: 4096
+  cls_hidden: [256, 64]
+  score_temperature: 1.0
+  topk_default: 20
 
 train:
-  batch_size: 8
-  epochs: 20
-  lr: 1.0e-4
+  batch_size: 16
+  epochs: 10
+  lr: 5.0e-4
   weight_decay: 1.0e-4
   grad_clip: 1.0
-  amp: true
-  pos_weight: 10.0
-  focal_alpha: 0.75
+  pos_weight: 5.0
+  focal_alpha: 0.9
   focal_gamma: 2.0
   lambda_focal: 1.0
   lambda_sparse: 1.0e-4
-  lambda_sym: 1.0e-3
-  lambda_hotspot: 0.0
-  early_stop_patience: 5
-  monitor: auprc
-  num_workers: 0
+  lambda_sym: 1.0e-2
+  early_stop_patience: 3
 
 infer:
   batch_size: 8
-  threshold: 0.5
-
-interpret:
-  top_k: 50
-  batch_size: 4
-  save_heatmap: true
-  save_feature_importance: true
-
-outputs:
-  checkpoints_dir: outputs/checkpoints
-  preds_dir: outputs/preds
-  interpret_dir: outputs/interpret
+  topk: 20

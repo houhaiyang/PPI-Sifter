@@ -1,6 +1,2 @@
-base_config: configs/default.yaml
-interpret:
-  top_k: 100
-  batch_size: 2
-  save_heatmap: true
-  save_feature_importance: true
+default_config: configs/default.yaml
+mode: interpret

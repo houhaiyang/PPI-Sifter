@@ -1,6 +1,2 @@
-base_config: configs/default.yaml
-train:
-  epochs: 30
-  batch_size: 8
-  lr: 1.0e-4
-  early_stop_patience: 7
+default_config: configs/default.yaml
+mode: train
