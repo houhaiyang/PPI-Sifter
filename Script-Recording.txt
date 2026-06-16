@@ -1,0 +1,26 @@
+获取faa：
+a__get_biogrid_faa.py
+
+嵌入生成：
+faa_2_residue_level_embedding_optimized_v2.py
+merge_existing_embeddings_compressed_v2.py
+
+record_id校对：
+b__faa_record_id.py
+b__faa_record_id_sup.py
+
+生成 split CSV（protein_disjoint 模式）
+c__build_pair_csv_enhanced.py
+
+
+合并为 all_pairs.csv
+python scripts/data/merge_splits_to_all_pairs.py \
+    --split_dir data/BIOGRID/pairs/protein_disjoint \
+    --out       data/BIOGRID/pairs/all_pairs.csv
+
+
+跑 split_dataset.py（此时它读取 all_pairs.csv 中的 split 列，直接透传）
+python scripts/emb/split_dataset.py \
+    --pairs data/BIOGRID/pairs/all_pairs.csv \
+    --out   data/BIOGRID/splits \
+    --mode  protein_disjoint
