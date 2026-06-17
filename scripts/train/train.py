@@ -1,7 +1,13 @@
 """
 脚本: train.py
-功能: PPI-Sifter 训练主入口，统一通过 configs/default.yaml 配置，无命令行传参
-依赖: torch, h5py, pandas, pyyaml, sklearn, tqdm
+功能: PPI-Sifter 训练主入口
+优化点:
+  1. fp16 混合精度默认开启（config 控制）
+  2. persistent_workers=True：DataLoader 进程复用，消除每 epoch 重建开销
+  3. 训练时 return_attention=False：不计算 attention map，减少计算量
+  4. gradient accumulation：支持等效大 batch
+  5. 仅在 val_interval 轮次才做验证，避免每 epoch 跑完整 valid set
+  6. tqdm 打印 loss/lr，方便监控
 运行: python scripts/train/train.py
 """
 
@@ -24,7 +30,6 @@ from ppisifter.losses import PPILoss
 from ppisifter.utils import set_seed, get_logger, save_checkpoint, load_checkpoint
 from scripts.train.eval import evaluate
 
-# 固定配置文件路径（相对项目根目录）
 _CFG_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "configs", "default.yaml",
@@ -32,7 +37,6 @@ _CFG_PATH = os.path.join(
 
 
 def load_config() -> dict:
-    """加载 YAML 配置文件。"""
     if not os.path.exists(_CFG_PATH):
         raise FileNotFoundError(f"配置文件不存在: {_CFG_PATH}")
     with open(_CFG_PATH, encoding="utf-8") as f:
@@ -40,7 +44,6 @@ def load_config() -> dict:
 
 
 def build_model(cfg: dict) -> PPISifter:
-    """根据配置构建模型。"""
     m = cfg["model"]
     return PPISifter(
         d_in=m["d_in"],
@@ -50,6 +53,52 @@ def build_model(cfg: dict) -> PPISifter:
         ffn_expansion=m["ffn_expansion"],
         dropout=m["dropout"],
     )
+
+
+def build_dataloaders(cfg: dict):
+    data_cfg    = cfg["data"]
+    splits_dir  = data_cfg["splits_dir"]
+    hdf5_path   = data_cfg["hdf5_path"]
+    max_seq_len = data_cfg["max_seq_len"]
+    num_workers = data_cfg.get("num_workers", 4)
+    prefetch    = data_cfg.get("prefetch_factor", 4) if num_workers > 0 else None
+    cache_size  = data_cfg.get("cache_size", 8192)
+    batch_size  = cfg["train"]["batch_size"]
+
+    train_set = PPIDataset(
+        csv_path=os.path.join(splits_dir, "train.csv"),
+        hdf5_path=hdf5_path,
+        max_seq_len=max_seq_len,
+        cache_size=cache_size,
+    )
+    valid_set = PPIDataset(
+        csv_path=os.path.join(splits_dir, "valid.csv"),
+        hdf5_path=hdf5_path,
+        max_seq_len=max_seq_len,
+        cache_size=cache_size,
+    )
+
+    loader_kwargs = dict(
+        collate_fn=collate_fn,
+        num_workers=num_workers,
+        pin_memory=True,
+        persistent_workers=(num_workers > 0),   # ← 关键：进程复用
+        prefetch_factor=prefetch,
+    )
+
+    train_loader = DataLoader(
+        train_set,
+        batch_size=batch_size,
+        shuffle=True,
+        **loader_kwargs,
+    )
+    valid_loader = DataLoader(
+        valid_set,
+        batch_size=batch_size * 2,
+        shuffle=False,
+        **loader_kwargs,
+    )
+    return train_loader, valid_loader, train_set, valid_set
 
 
 def main() -> None:
@@ -62,39 +111,7 @@ def main() -> None:
     logger.info(f"配置文件: {_CFG_PATH}")
 
     # -------- 数据集 --------
-    data_cfg    = cfg["data"]
-    splits_dir  = data_cfg["splits_dir"]
-    hdf5_path   = data_cfg["hdf5_path"]
-    max_seq_len = data_cfg["max_seq_len"]
-    num_workers = data_cfg.get("num_workers", 0)
-
-    train_set = PPIDataset(
-        csv_path=os.path.join(splits_dir, "train.csv"),
-        hdf5_path=hdf5_path,
-        max_seq_len=max_seq_len,
-    )
-    valid_set = PPIDataset(
-        csv_path=os.path.join(splits_dir, "valid.csv"),
-        hdf5_path=hdf5_path,
-        max_seq_len=max_seq_len,
-    )
-
-    train_loader = DataLoader(
-        train_set,
-        batch_size=cfg["train"]["batch_size"],
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
-    valid_loader = DataLoader(
-        valid_set,
-        batch_size=cfg["train"]["batch_size"] * 2,
-        shuffle=False,
-        collate_fn=collate_fn,
-        num_workers=num_workers,
-        pin_memory=(device.type == "cuda"),
-    )
+    train_loader, valid_loader, train_set, valid_set = build_dataloaders(cfg)
     logger.info(f"训练集: {len(train_set)} 对，验证集: {len(valid_set)} 对")
 
     # -------- 模型 --------
@@ -116,10 +133,18 @@ def main() -> None:
     optimizer = optim.AdamW(
         model.parameters(), lr=t["lr"], weight_decay=t["weight_decay"]
     )
+    total_steps = (len(train_loader) // t.get("grad_accum_steps", 1)) * t["epochs"]
+    warmup_steps = (len(train_loader) // t.get("grad_accum_steps", 1)) * t.get("warmup_epochs", 2)
+
     if t["scheduler"] == "cosine":
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=t["epochs"], eta_min=t["lr"] * 0.01
-        )
+        # warmup + cosine decay（更稳定）
+        def lr_lambda(step):
+            if step < warmup_steps:
+                return float(step + 1) / float(max(1, warmup_steps))
+            progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+            import math
+            return max(0.01, 0.5 * (1.0 + math.cos(math.pi * progress)))
+        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     else:
         scheduler = None
 
@@ -134,67 +159,76 @@ def main() -> None:
         logger.info(f"从 epoch={start_epoch}, best_auprc={best_auprc:.4f} 恢复训练")
 
     # -------- 混合精度 --------
-    use_fp16 = t.get("fp16", False) and device.type == "cuda"
-    scaler   = torch.cuda.amp.GradScaler() if use_fp16 else None
+    use_fp16 = t.get("fp16", True) and device.type == "cuda"
+    scaler   = torch.cuda.amp.GradScaler(enabled=use_fp16)
+    logger.info(f"混合精度 fp16: {use_fp16}")
 
-    ckpt_dir = cfg["paths"]["checkpoint_dir"]
+    ckpt_dir        = cfg["paths"]["checkpoint_dir"]
     os.makedirs(ckpt_dir, exist_ok=True)
-
-    # -------- Early stopping 状态 --------
-    patience       = t.get("early_stop_patience", 8)
-    no_improve_cnt = 0
+    patience        = t.get("early_stop_patience", 8)
+    no_improve_cnt  = 0
+    val_interval    = t.get("val_interval", 1)
+    accum_steps     = t.get("grad_accum_steps", 1)
+    global_step     = 0
 
     # -------- 训练循环 --------
     for epoch in range(start_epoch, t["epochs"]):
         model.train()
         total_loss  = 0.0
         num_batches = 0
+        optimizer.zero_grad()
 
-        for emb_a, emb_b, mask_a, mask_b, labels in tqdm(
-            train_loader, desc=f"Epoch {epoch+1}/{t['epochs']}", leave=False
-        ):
-            emb_a  = emb_a.to(device)
-            emb_b  = emb_b.to(device)
-            mask_a = mask_a.to(device)
-            mask_b = mask_b.to(device)
-            labels = labels.to(device)
+        pbar = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch+1}/{t['epochs']}",
+            leave=True,
+            dynamic_ncols=True,
+        )
 
-            optimizer.zero_grad()
+        for step, (emb_a, emb_b, mask_a, mask_b, labels) in enumerate(pbar):
+            emb_a  = emb_a.to(device, non_blocking=True)
+            emb_b  = emb_b.to(device, non_blocking=True)
+            mask_a = mask_a.to(device, non_blocking=True)
+            mask_b = mask_b.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
-            if scaler is not None:
-                with torch.cuda.amp.autocast():
-                    out = model(emb_a, emb_b, mask_a, mask_b, return_attention=True)
-                    loss = criterion(
-                        out["logits"], labels,
-                        out.get("attn_ab"), out.get("attn_ba"),
-                    )
-                scaler.scale(loss).backward()
+            # ── 训练时不需要 attention map，节省计算 ──
+            with torch.cuda.amp.autocast(enabled=use_fp16):
+                out  = model(emb_a, emb_b, mask_a, mask_b, return_attention=False)
+                loss = criterion(
+                    out["logits"], labels,
+                    None, None,   # 不传 attn，sparse/sym loss 自动跳过
+                ) / accum_steps
+
+            scaler.scale(loss).backward()
+
+            if (step + 1) % accum_steps == 0:
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), t["grad_clip"])
                 scaler.step(optimizer)
                 scaler.update()
-            else:
-                out = model(emb_a, emb_b, mask_a, mask_b, return_attention=True)
-                loss = criterion(
-                    out["logits"], labels,
-                    out.get("attn_ab"), out.get("attn_ba"),
-                )
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), t["grad_clip"])
-                optimizer.step()
+                optimizer.zero_grad()
+                if scheduler is not None:
+                    scheduler.step()
+                global_step += 1
 
-            total_loss  += loss.item()
+            total_loss  += loss.item() * accum_steps
             num_batches += 1
 
+            # tqdm 实时显示
+            if num_batches % 50 == 0:
+                lr_now = optimizer.param_groups[0]["lr"]
+                pbar.set_postfix(
+                    loss=f"{total_loss/num_batches:.4f}",
+                    lr=f"{lr_now:.2e}",
+                )
+
         avg_loss = total_loss / max(num_batches, 1)
-        if scheduler is not None:
-            scheduler.step()
 
         # -------- 验证 --------
-        val_interval = t.get("val_interval", 1)
         if (epoch + 1) % val_interval == 0:
-            metrics    = evaluate(model, valid_loader, device)
-            lr_now     = optimizer.param_groups[0]["lr"]
+            metrics = evaluate(model, valid_loader, device)
+            lr_now  = optimizer.param_groups[0]["lr"]
             logger.info(
                 f"Epoch {epoch+1:3d} | loss={avg_loss:.4f} | "
                 f"AUPRC={metrics['auprc']:.4f} | AUROC={metrics['auroc']:.4f} | "
@@ -224,7 +258,6 @@ def main() -> None:
                     )
                     break
 
-        # 每 10 epoch 定期保存
         if (epoch + 1) % 10 == 0:
             save_checkpoint(
                 {
