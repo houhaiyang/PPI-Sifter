@@ -12,11 +12,13 @@ device: cuda          # cuda | cpu
 
 # ── 数据路径 ──
 data:
-  hdf5_path:   data/BIOGRID/embeddings/embeddings.h5   # npz_to_hdf5.py 输出
-  splits_dir:  data/BIOGRID/pairs/protein_disjoint      # train.csv / valid.csv / test.csv 所在目录
-  split_mode:  proteindisjoint                         # random | proteindisjoint | clusterdisjoint | speciesdisjoint
-  max_seq_len: 1024
-  num_workers: 0       # Win11 本地 debug 推荐 0；Linux A100 推荐 4
+  hdf5_path:   data/BIOGRID/embeddings/embeddings.h5
+  splits_dir:  data/BIOGRID/pairs/protein_disjoint
+  split_mode:  proteindisjoint
+  max_seq_len: 1024        # 1024->512：attention 计算量降 4x（O(L²)）
+  num_workers: 4          # Linux 多进程 I/O，A100 推荐 8
+  prefetch_factor: 4      # 每个 worker 预取 4 个 batch
+  cache_size: 8192        # LRU 内存缓存蛋白数量（按需调低，防 OOM）
 
 # ── 输出路径 ──
 paths:
@@ -27,7 +29,7 @@ paths:
 
 # ── 模型超参 ──
 model:
-  d_in:          1152   # ESM-C 600M=1152，300M=960
+  d_in:          1152
   d_model:       256
   n_heads:       8
   n_layers:      2
@@ -38,13 +40,13 @@ model:
 
 # ── 训练超参 ──
 train:
-  epochs:         50
-  batch_size:     8        # RTX4070S debug 建议 8；A100 建议 64
+  epochs:         2
+  batch_size:     64       # A100 建议 64；若 OOM 降到 32
   lr:             1.0e-4
   weight_decay:   1.0e-4
   grad_clip:      1.0
   warmup_epochs:  2
-  scheduler:      cosine   # cosine | none
+  scheduler:      cosine
   val_interval:   1
   # 损失权重
   pos_weight:     2.0
@@ -55,18 +57,20 @@ train:
   lambda_sym:     0.01
   # Early stopping
   early_stop_patience: 8
-  early_stop_metric:   auprc
-  # 断点续训（留空则从头训练）
+  early_stop_metric: auprc
+  # 断点续训
   resume_checkpoint: ""
-  # 混合精度（默认关，A100 建议开启）
-  fp16: false
+  # 混合精度
+  fp16: true              # A100 开启，速度 ~2x
+  # gradient accumulation（等效 batch_size * accum_steps）
+  grad_accum_steps: 2     # 如需等效 batch *2，设为 2
 
 # ── 推理 / 评估 ──
 infer:
-  batch_size:         32
+  batch_size:         64
   topk:               20
   topk_residue_pairs: 20
   split:              test
-  checkpoint:         ""      # 留空则自动查找 outputs/checkpoints/best_auprc.pt
+  checkpoint:         ""
   threshold:          0.5
-  export_attn:        false   # true 时推理同步导出 attention map
+  export_attn:        false
