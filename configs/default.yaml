@@ -1,0 +1,72 @@
+# ============================================================
+# PPI-Sifter 默认配置
+# 所有训练/评估/推理脚本均直接读取本文件，无命令行传参
+# ============================================================
+
+# ── 全局 ──
+project:
+  name: ppi_sifter
+  seed: 42
+
+device: cuda          # cuda | cpu
+
+# ── 数据路径 ──
+data:
+  hdf5_path:   data/BIOGRID/embeddings/embeddings.h5   # npz_to_hdf5.py 输出
+  splits_dir:  data/BIOGRID/pairs/protein_disjoint      # train.csv / valid.csv / test.csv 所在目录
+  split_mode:  proteindisjoint                         # random | proteindisjoint | clusterdisjoint | speciesdisjoint
+  max_seq_len: 1024
+  num_workers: 0       # Win11 本地 debug 推荐 0；Linux A100 推荐 4
+
+# ── 输出路径 ──
+paths:
+  checkpoint_dir: outputs/checkpoints
+  log_dir:        outputs/logs
+  pred_dir:       outputs/preds
+  interpret_dir:  outputs/interpret
+
+# ── 模型超参 ──
+model:
+  d_in:          1152   # ESM-C 600M=1152，300M=960
+  d_model:       256
+  n_heads:       8
+  n_layers:      2
+  ffn_expansion: 4
+  dropout:       0.1
+  attn_dropout:  0.1
+  topk_default:  20
+
+# ── 训练超参 ──
+train:
+  epochs:         50
+  batch_size:     8        # RTX4070S debug 建议 8；A100 建议 64
+  lr:             1.0e-4
+  weight_decay:   1.0e-4
+  grad_clip:      1.0
+  warmup_epochs:  2
+  scheduler:      cosine   # cosine | none
+  val_interval:   1
+  # 损失权重
+  pos_weight:     2.0
+  focal_alpha:    0.9
+  focal_gamma:    2.0
+  lambda_focal:   0.5
+  lambda_sparse:  0.01
+  lambda_sym:     0.01
+  # Early stopping
+  early_stop_patience: 8
+  early_stop_metric:   auprc
+  # 断点续训（留空则从头训练）
+  resume_checkpoint: ""
+  # 混合精度（默认关，A100 建议开启）
+  fp16: false
+
+# ── 推理 / 评估 ──
+infer:
+  batch_size:         32
+  topk:               20
+  topk_residue_pairs: 20
+  split:              test
+  checkpoint:         ""      # 留空则自动查找 outputs/checkpoints/best_auprc.pt
+  threshold:          0.5
+  export_attn:        false   # true 时推理同步导出 attention map
