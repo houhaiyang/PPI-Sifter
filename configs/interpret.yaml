@@ -1,0 +1,75 @@
+# ============================================================
+# PPI-Sifter 可解释性流水线专用配置
+# 所有脚本直接读此文件，无命令行传参
+# ============================================================
+
+project:
+  name: ppi_sifter_interpret
+  seed: 42
+
+device: cuda   # cuda | cpu
+
+# ── 数据路径（与 default.yaml 保持一致）──
+data:
+  hdf5_path:   data/BIOGRID/embeddings/embeddings.h5
+  splits_dir:  data/BIOGRID/pairs/protein_disjoint
+#  split:       test          # 对哪个 split 做解释：train | valid | test
+  split:       case_study    # ← 指向 case_study.csv
+  max_seq_len: 512
+  num_workers: 0             # 解释模式单进程即可，避免 h5 并发问题
+
+# ── 模型超参（必须与训练时一致）──
+model:
+  d_in:          1152
+  d_model:       256
+  n_heads:       8
+  n_layers:      2
+  ffn_expansion: 4
+  dropout:       0.1
+
+# ── Checkpoint ──
+checkpoint: outputs/checkpoints/best_auprc.pt
+
+# ── 解释性输出目录 ──
+paths:
+  interpret_dir:  outputs/interpret   # attn_matrix / topk_pairs 存放目录
+  figures_dir:    outputs/figures     # 热图 / 分布图存放目录
+  log_dir:        outputs/logs
+
+# ── run_interpret.py 参数 ──
+interpret:
+  topk:           20          # top-k residue pairs 数量
+  batch_size:     1           # 导出 attention 时建议 bs=1，防 OOM
+  # 若只想跑少量样本做 debug，设置 max_pairs；-1 = 全量
+  max_pairs:      -1           # -1 = case_study 全跑
+  # 只导出预测正例（prob >= pos_threshold）的 attention map
+  pos_threshold:  0.5
+  # 是否同时保存 attn_matrix CSV（可能较大）
+  save_attn_matrix: true
+
+# ── quantify_interpret.py 参数 ──
+quantify:
+  # PDB 界面残基标注文件（CSV，列：protein_a, protein_b, res_a, res_b）
+  # 若无标注文件则跳过 top-k overlap 计算，只算 entropy/symmetry
+  pdb_interface_csv: ""        # 填写路径后自动激活 overlap 计算
+  # attention entropy 分组对比（正 vs 负样本）
+  entropy_compare: true
+  # symmetry consistency（SAB 与 SBA^T 的 Frobenius 距离）
+  symmetry_check:  true
+  output_csv:      outputs/interpret/quantify_results.csv
+
+# ── plot_interpret.py 参数 ──
+plot:
+  # heatmap 相关
+  heatmap_cmap:    YlOrRd
+  heatmap_dpi:     200
+  heatmap_max_len: 200        # 超过此长度的序列截断展示（不影响计算）
+  # 最多画几张热图（按 interaction prob 降序选）
+  heatmap_top_n:   10
+  # entropy 分布图
+  entropy_fig:     outputs/figures/entropy_comparison.png
+  # symmetry 分布图
+  symmetry_fig:    outputs/figures/symmetry_comparison.png
+  # top-k scatter（residue pair attention score 分布）
+  topk_scatter_fig: outputs/figures/topk_scatter.png
+
