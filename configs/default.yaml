@@ -16,9 +16,9 @@ data:
   splits_dir:  data/BIOGRID/pairs/protein_disjoint
   split_mode:  proteindisjoint
   max_seq_len: 512        # 1024->512：attention 计算量降 4x（O(L²)）
-  num_workers: 8          # Linux 多进程 I/O，A100 推荐 8
-  prefetch_factor: 4      # 每个 worker 预取 4 个 batch
-  cache_size: 8192        # LRU 内存缓存蛋白数量（按需调低，防 OOM）
+  num_workers: 4          # Linux 多进程 I/O，A100 推荐 8
+  prefetch_factor: 2      # 每个 worker 预取 4 个 batch
+  cache_size: 4096        # LRU 内存缓存蛋白数量（按需调低，防 OOM）
 
 # ── 输出路径 ──
 paths:
@@ -41,7 +41,7 @@ model:
 # ── 训练超参 ──
 train:
   epochs:         2
-  batch_size:     256       # A100 建议 64；若 OOM 降到 32
+  batch_size:     512       # A100 建议 64；若 OOM 降到 32
   lr:             1.0e-4
   weight_decay:   1.0e-4
   grad_clip:      1.0
@@ -63,7 +63,7 @@ train:
   # 混合精度
   fp16: true              # A100 开启，速度 ~2x
   # gradient accumulation（等效 batch_size * accum_steps）
-  grad_accum_steps: 4     # 如需等效 batch *2，设为 2
+  grad_accum_steps: 2     # 如需等效 batch *2，设为 2
 
 # ── 推理 / 评估 ──
 infer:
