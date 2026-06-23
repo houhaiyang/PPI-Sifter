@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/logo/PPI-Sifter-Logo.png" width="80" style="vertical-align:middle; margin-right:16px;" alt="PPI-Sifter Logo"/>
-  <span>
-    <strong style="font-size:1.6em;">PPI-Sifter</strong><br>
-    <b>Residue-Level Interpretable Protein–Protein Interaction Prediction<br>
-    via Bidirectional Cross-Attention on Frozen ESM-C Embeddings</b>
-  </span>
+  <img src="docs/logo/PPI-Sifter-Logo.png" width="80" alt="PPI-Sifter Logo"/>
+</p>
+
+<p align="center">
+  <b>Residue-Level Interpretable Protein–Protein Interaction Prediction<br>
+  via Bidirectional Cross-Attention on Frozen ESM-C Embeddings</b>
 </p>
 
 <p align="center">
@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/ESM--C-600M-green" alt="ESM-C 600M">
   <img src="https://img.shields.io/badge/status-active-brightgreen" alt="Status">
 </p>
+
 
 ## Overview
 
