@@ -1,7 +1,10 @@
-<h1 align="center">PPI-Sifter</h1>
-
 <p align="center">
-  <b>Residue-Level Interpretable Protein–Protein Interaction Prediction<br>via Bidirectional Cross-Attention on Frozen ESM-C Embeddings</b>
+  <img src="docs/logo/PPI-Sifter-Logo.png" width="80" style="vertical-align:middle; margin-right:16px;" alt="PPI-Sifter Logo"/>
+  <span>
+    <strong style="font-size:2em;">PPI-Sifter</strong><br>
+    <b>Residue-Level Interpretable Protein–Protein Interaction Prediction<br>
+    via Bidirectional Cross-Attention on Frozen ESM-C Embeddings</b>
+  </span>
 </p>
 
 <p align="center">
@@ -13,6 +16,7 @@
   <img src="https://img.shields.io/badge/ESM--C-600M-green" alt="ESM-C 600M">
   <img src="https://img.shields.io/badge/status-active-brightgreen" alt="Status">
 </p>
+
 
 ---
 
@@ -61,10 +65,10 @@ Evaluated on **protein-disjoint** held-out validation set (BioGRID, 58,096 pairs
 
 | Metric | Value |
 |--------|-------|
-| AUPRC  | **0.8617** |
-| AUROC  | 0.8810 |
-| F1     | 0.8162 |
-| MCC    | 0.6059 |
+| AUPRC  | **0.8480** |
+| AUROC  | 0.8717 |
+| F1     | 0.8125 |
+| MCC    | 0.5967 |
 
 > Train: 1,313,298 pairs | Split: protein-disjoint | Trainable params: 3,060,483
 
