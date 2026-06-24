@@ -29,6 +29,7 @@ from ppisifter.model import PPISifter
 from ppisifter.data import PPIDataset, collate_fn
 from ppisifter.utils import set_seed, get_logger
 from ppisifter.interpret import AttentionInterpreter
+from ppisifter.config import load_config
 
 _CFG_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -39,8 +40,8 @@ _CFG_PATH = os.path.join(
 def main() -> None:
     if not os.path.exists(_CFG_PATH):
         raise FileNotFoundError(f"配置文件不存在: {_CFG_PATH}")
-    with open(_CFG_PATH, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+
+    cfg = load_config(_CFG_PATH)
 
     set_seed(cfg["project"]["seed"])
     logger = get_logger("infer", log_dir=cfg["paths"]["log_dir"])
@@ -155,10 +156,13 @@ def main() -> None:
             logger.info(f"Layer {layer_idx} reprs 已保存: {save_path}，shape={full_tensor.shape}")
 
         # 同时保存对应 labels（供 run_contrast_analysis.py 的 linear probe 使用）
-        labels_tensor = torch.tensor(pairs_df["label"].values, dtype=torch.long)
-        labels_path = os.path.join(layer_reprs_dir, f"labels_{split}.pt")
-        torch.save(labels_tensor, labels_path)
-        logger.info(f"Labels 已保存: {labels_path}")
+        if "label" in pairs_df.columns:
+            labels_tensor = torch.tensor(pairs_df["label"].values, dtype=torch.long)
+            labels_path = os.path.join(layer_reprs_dir, f"labels_{split}.pt")
+            torch.save(labels_tensor, labels_path)
+            logger.info(f"Labels 已保存: {labels_path}")
+        else:
+            logger.warning("CSV 无 label 列，跳过 labels.pt 保存（推理模式）")
 
     # export_attn: true 时逐样本导出 attention map
     if infer_cfg.get("export_attn", False):

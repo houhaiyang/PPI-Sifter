@@ -14,7 +14,8 @@ def _merge(a, b):
 def load_config(path):
     path = Path(path)
     cfg = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
-    parent = cfg.pop('default_config', None)
+    # 同时兼容 _base_ 和 default_config 两种继承写法
+    parent = cfg.pop('_base_', None) or cfg.pop('default_config', None)
     if parent:
         parent_path = Path(parent)
         if not parent_path.exists():

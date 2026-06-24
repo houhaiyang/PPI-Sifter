@@ -12,6 +12,7 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, roc_auc_score
+from torch.optim.lr_scheduler import LinearLR, SequentialLR
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -50,11 +51,13 @@ def build_contrast_head(cfg: dict, model_cfg: dict):
     active_layers = c.get("active_layers", [n_layers - 1])
     active_layers = [l if l >= 0 else n_layers + l for l in active_layers]
     head = LayerwiseContrastHead(
-        n_layers      = n_layers,
-        d_in          = d_in,
-        d_proj        = c.get("d_proj", 128),
-        active_layers = active_layers,
-        dropout       = model_cfg.get("dropout", 0.1),
+        n_layers=n_layers,
+        d_in=d_in,
+        d_proj=c.get("d_proj", 128),
+        active_layers=active_layers,
+        dropout=model_cfg.get("dropout", 0.1),
+        loss_type=c.get("type", "supcon"),  # 新增
+        triplet_margin=c.get("triplet_margin", 0.5),  # 新增
     )
     head.loss_fn.temperature = c.get("temperature", 0.07)
     return head
@@ -131,6 +134,15 @@ def train_one_epoch(
         total_loss_sum += loss_dict["total"].item()
         all_probs.extend(out["prob"].detach().cpu().tolist())
         all_labels.extend(labels.cpu().tolist())
+
+    # ── 梯度累积尾部 flush：处理最后一个不完整的 accum window ──
+    remaining = len(loader) % grad_accum
+    if remaining != 0:
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(all_params, cfg["train"].get("grad_clip", 1.0))
+        scaler.step(optimizer)
+        scaler.update()
+        optimizer.zero_grad()
 
     auprc = average_precision_score(all_labels, all_probs)
     return total_loss_sum / max(len(loader), 1), auprc
@@ -245,9 +257,23 @@ def main():
         lr           = cfg["train"]["lr"],
         weight_decay = cfg["train"].get("weight_decay", 1e-4),
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=cfg["train"]["epochs"]
-    )
+
+
+    warmup_epochs = cfg["train"].get("warmup_epochs", 0)
+    if warmup_epochs > 0:
+        warmup_sched = LinearLR(
+            optimizer, start_factor=1e-3, end_factor=1.0, total_iters=warmup_epochs
+        )
+        cosine_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=max(cfg["train"]["epochs"] - warmup_epochs, 1)
+        )
+        scheduler = SequentialLR(
+            optimizer, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs]
+        )
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=cfg["train"]["epochs"]
+        )
     scaler = torch.cuda.amp.GradScaler(enabled=cfg["train"].get("fp16", False))
 
     # 训练循环

@@ -32,6 +32,7 @@ from sklearn.metrics import (
 from ppisifter.model import PPISifter
 from ppisifter.data import PPIDataset, collate_fn
 from ppisifter.utils import set_seed, get_logger
+from ppisifter.config import load_config
 
 _CFG_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -92,8 +93,8 @@ def main() -> None:
     """独立运行评估入口，配置完全来自 configs/default.yaml。"""
     if not os.path.exists(_CFG_PATH):
         raise FileNotFoundError(f"配置文件不存在: {_CFG_PATH}")
-    with open(_CFG_PATH, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+
+    cfg = load_config(_CFG_PATH)
 
     set_seed(cfg["project"]["seed"])
     logger = get_logger("eval", log_dir=cfg["paths"]["log_dir"])

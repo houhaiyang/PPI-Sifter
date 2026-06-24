@@ -136,6 +136,8 @@ class LayerwiseContrastHead(nn.Module):
         d_proj: int = 128,
         active_layers: Optional[list] = None,
         dropout: float = 0.1,
+        loss_type: str = "supcon",  # 新增
+        triplet_margin: float = 0.5,  # 新增
     ) -> None:
         super().__init__()
         self.n_layers = n_layers
@@ -145,6 +147,8 @@ class LayerwiseContrastHead(nn.Module):
             for i in self.active_layers
         })
         self.loss_fn = SupervisedContrastiveLoss()
+        self.loss_type = loss_type  # 新增
+        self.triplet_fn = TripletPartnerLoss(margin=triplet_margin) if loss_type != "supcon" else None  # 新增
 
     def forward(
         self,

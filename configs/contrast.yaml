@@ -26,6 +26,8 @@ contrast:
   triplet_margin: 0.5
   active_layers: [1]
   lambda_contrast: 0.1
+  layer_weights: # 与 active_layers: [1] 保持对齐
+    1: 1.0
 
 # ── 消融变体说明 ──
 # variant: no_contrast     -> contrast.enabled: false
