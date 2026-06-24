@@ -1,5 +1,5 @@
 # ============================================================
-# PPI-Sifter 默认配置
+# PPI-Sifter 默认配置（对比学习版）
 # 所有训练/评估/推理脚本均直接读取本文件，无命令行传参
 # ============================================================
 
@@ -8,17 +8,17 @@ project:
   name: ppi_sifter
   seed: 42
 
-device: cuda          # cuda | cpu
+device: cuda
 
 # ── 数据路径 ──
 data:
-  hdf5_path:   data/BIOGRID/embeddings/embeddings.h5
-  splits_dir:  data/BIOGRID/pairs/protein_disjoint
-  split_mode:  proteindisjoint
-  max_seq_len: 512        # 1024->512：attention 计算量降 4x（O(L²)）
-  num_workers: 4          # Linux 多进程 I/O，A100 推荐 8
-  prefetch_factor: 2      # 每个 worker 预取 4 个 batch
-  cache_size: 4096        # LRU 内存缓存蛋白数量（按需调低，防 OOM）
+  hdf5_path:       data/BIOGRID/embeddings/embeddings.h5
+  splits_dir:      data/BIOGRID/pairs/protein_disjoint
+  split_mode:      proteindisjoint
+  max_seq_len:     512
+  num_workers:     4
+  prefetch_factor: 2
+  cache_size:      4096
 
 # ── 输出路径 ──
 paths:
@@ -26,6 +26,7 @@ paths:
   log_dir:        outputs/logs
   pred_dir:       outputs/preds
   interpret_dir:  outputs/interpret
+  analysis_dir:   outputs/analysis    # 新增：对比分析输出
 
 # ── 模型超参 ──
 model:
@@ -38,32 +39,47 @@ model:
   attn_dropout:  0.1
   topk_default:  20
 
+# ── 对比学习超参（新增块）──
+contrast:
+  enabled:       true          # false 则完全关闭，退化为原版
+  type:          supcon        # supcon | triplet | both
+  d_proj:        128           # 投影头输出维度
+  temperature:   0.07          # supcon 温度
+  triplet_margin: 0.5          # triplet margin（type=triplet 或 both 时生效）
+  active_layers: [1]           # 参与对比的层索引（从 0 开始，-1 表示最后一层）
+                               # 例: [0,1] 表示两层都参与，[1] 只最后一层
+  layer_weights:               # 各层对比损失权重（null 表示等权）
+    0: 0.5
+    1: 1.0
+  lambda_contrast: 0.1         # 对比损失在总损失中的权重
+
 # ── 训练超参 ──
 train:
-  epochs:         2
-  batch_size:     512       # A100 建议 64；若 OOM 降到 32
-  lr:             1.0e-4
-  weight_decay:   1.0e-4
-  grad_clip:      1.0
-  warmup_epochs:  1
-  scheduler:      cosine
-  val_interval:   1
-  # 损失权重
-  pos_weight:     2.0
-  focal_alpha:    0.9
-  focal_gamma:    2.0
-  lambda_focal:   0.5
-  lambda_sparse:  0.01
-  lambda_sym:     0.01
+  epochs:              50
+  batch_size:          512
+  lr:                  1.0e-4
+  weight_decay:        1.0e-4
+  grad_clip:           1.0
+  warmup_epochs:       1
+  scheduler:           cosine
+  val_interval:        1
+  # 主任务损失权重
+  pos_weight:          2.0
+  focal_alpha:         0.9
+  focal_gamma:         2.0
+  lambda_focal:        0.5
+  lambda_sparse:       0.01
+  lambda_sym:          0.01
   # Early stopping
   early_stop_patience: 8
-  early_stop_metric: auprc
-  # 断点续训
-  resume_checkpoint: ""
-  # 混合精度
-  fp16: true              # A100 开启，速度 ~2x
-  # gradient accumulation（等效 batch_size * accum_steps）
-  grad_accum_steps: 2     # 如需等效 batch *2，设为 2
+  early_stop_metric:   auprc
+  resume_checkpoint:   ""
+  fp16:                true
+  grad_accum_steps:    2
+  # 训练时是否导出 layer_reprs（对比学习必须开启）
+  return_layer_reprs:  true
+  # 训练时是否导出 attn（对比分析需要）
+  return_attention:    true
 
 # ── 推理 / 评估 ──
 infer:
@@ -73,4 +89,12 @@ infer:
   split:              test
   checkpoint:         ""
   threshold:          0.5
-  export_attn:        false
+  export_attn:        true
+  export_layer_reprs: true    # 新增：导出中间层表示用于分析
+
+# ── 分析 ──
+analysis:
+  n_seeds:            3       # 稳定性分析种子数量
+  probe_max_iter:     200     # 线性 probe 最大迭代次数
+  pca_components:     50      # 分析前 PCA 降维维度（0 表示不降维）
+  export_umap:        false   # 是否导出 UMAP 可视化（需要安装 umap-learn）

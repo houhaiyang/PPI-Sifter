@@ -1,0 +1,36 @@
+# ============================================================
+# PPI-Sifter 对比学习消融专用配置
+# 继承 default.yaml，覆盖对比相关超参
+# 使用方法：在 train.py 中 load_config("configs/contrast.yaml")
+# ============================================================
+
+_base_: configs/default.yaml
+
+project:
+  name: ppi_sifter_contrast_ablation
+  seed: 42
+
+# ── 消融矩阵 ──
+# 修改下方 ablation_variant 字段切换不同消融设定
+# 支持的 variant 见下方注释，train.py 会根据 variant 自动覆盖 contrast 配置
+
+ablation_variant: full   # full | no_contrast | last_layer_only | first_layer_only
+                         # supcon_only | triplet_only | all_layers
+
+# ── 对比消融快速开关（override contrast 块）──
+contrast:
+  enabled:       true
+  type:          supcon
+  d_proj:        128
+  temperature:   0.07
+  triplet_margin: 0.5
+  active_layers: [1]
+  lambda_contrast: 0.1
+
+# ── 消融变体说明 ──
+# variant: no_contrast     -> contrast.enabled: false
+# variant: last_layer_only -> contrast.active_layers: [n_layers-1]
+# variant: first_layer_only-> contrast.active_layers: [0]
+# variant: all_layers      -> contrast.active_layers: [0, 1, ..., n_layers-1]
+# variant: supcon_only     -> contrast.type: supcon
+# variant: triplet_only    -> contrast.type: triplet

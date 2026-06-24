@@ -11,7 +11,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import torch
-from functools import lru_cache
+# from functools import lru_cache
 from torch import Tensor
 from torch.utils.data import Dataset
 from typing import Dict, List, Optional, Tuple
@@ -138,17 +138,17 @@ class PPIDataset(Dataset):
 
 def collate_fn(
     batch: List[Tuple[Tensor, Tensor, Tensor]],
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+) -> Dict[str, Tensor]:
     """
     向量化 collate：zero-padding + bool mask。
-    替代原 Python for-loop，减少 CPU 开销。
+    返回 dict（与 train/eval/infer.py 的 batch["emb_a"] 解包对齐）。
 
     返回:
         emb_a:  (B, La_max, D)
         emb_b:  (B, Lb_max, D)
         mask_a: (B, La_max)  True=有效
         mask_b: (B, Lb_max)  True=有效
-        labels: (B,)
+        label:  (B,)
     """
     emb_a_list, emb_b_list, label_list = zip(*batch)
 
@@ -167,4 +167,12 @@ def collate_fn(
     emb_a_pad, mask_a = _pad(emb_a_list)
     emb_b_pad, mask_b = _pad(emb_b_list)
     labels = torch.stack(label_list)
-    return emb_a_pad, emb_b_pad, mask_a, mask_b, labels
+
+    # ★ 改为 dict，与 batch["emb_a"] 解包对齐
+    return {
+        "emb_a":  emb_a_pad,
+        "emb_b":  emb_b_pad,
+        "mask_a": mask_a,
+        "mask_b": mask_b,
+        "label":  labels,
+    }

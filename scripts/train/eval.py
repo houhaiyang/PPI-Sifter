@@ -31,7 +31,7 @@ from sklearn.metrics import (
 
 from ppisifter.model import PPISifter
 from ppisifter.data import PPIDataset, collate_fn
-from ppisifter.utils import set_seed, get_logger, load_checkpoint
+from ppisifter.utils import set_seed, get_logger
 
 _CFG_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
