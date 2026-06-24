@@ -1,0 +1,8 @@
+[1] AttnSeq-PPI: Attention-based Sequence Model for Protein-Protein Interaction Prediction [R].2024.
+[2] B-PPI: A Bi-directional Feature Fusion Network for Protein-Protein Interaction Prediction [EB/OL].bioRxiv,2025.
+[3] CmhAttCPI: Compound-Multihead Attention Model for Compound-Protein Interaction Prediction [R].2024.
+[4] DeepPFP-CO: Deep Learning Based Protein Function Prediction with Co-annotation Constraint [J].IEEE/ACM Transactions on Computational Biology and Bioinformatics,2022.
+[5] D-SCRIPT: Deep Sequence-driven Interaction Prediction for Protein Pairs [J].Cell Systems,2021.
+[6] ICAN: Interpretable Cross-Attention Network for Protein-Protein Interaction Prediction [J].PLOS ONE,2022.
+[7] SENSE-PPI: Sparse Evolutionary Feature Integrated Attention Network for PPI Prediction [J].iScience,2024.
+[8] Topsy-Turvy: Cross-species Protein Interaction Prediction with Contrastive Learning [J].Bioinformatics,2022.
