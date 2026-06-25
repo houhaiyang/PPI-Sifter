@@ -259,23 +259,27 @@ def train_one_epoch(
         lr_now = optimizer.param_groups[0]["lr"]
 
         # ── step 级 CSV 记录 ──────────────────────────────────────────────
-        step_writer.writerow({
-            "global_step":   global_step,
-            "epoch":         epoch,
-            "step_in_epoch": step,
-            "loss_total":    round(loss_dict["total"].item(), 6),
-            "loss_wbce":     round(loss_dict.get("wbce",     torch.tensor(0.0)).item(), 6),
-            "loss_focal":    round(loss_dict.get("focal",    torch.tensor(0.0)).item(), 6),
-            "loss_sparse":   round(loss_dict.get("sparse",   torch.tensor(0.0)).item(), 6),
-            "loss_sym":      round(loss_dict.get("sym",      torch.tensor(0.0)).item(), 6),
-            "loss_contrast": round(loss_dict.get("contrast", torch.tensor(0.0)).item(), 6),
-            "lr":            f"{lr_now:.2e}",
-            "step_s":        round(total_step_time, 4),
-            "data_s":        round(data_wait_time,  4),
-            "gpu_s":         round(compute_time,    4),
-        })
-        # 每 50 步 flush 一次，保证进程异常时日志不丢失
-        if global_step % 50 == 0:
+        step_log_interval = cfg["train"].get("step_log_interval", 100)
+
+        if (global_step % step_log_interval == 0) or ((step + 1) == len(loader)):
+            step_writer.writerow({
+                "global_step": global_step,
+                "epoch": epoch,
+                "step_in_epoch": step,
+                "loss_total": round(loss_dict["total"].item(), 6),
+                "loss_wbce": round(loss_dict.get("wbce", torch.tensor(0.0)).item(), 6),
+                "loss_focal": round(loss_dict.get("focal", torch.tensor(0.0)).item(), 6),
+                "loss_sparse": round(loss_dict.get("sparse", torch.tensor(0.0)).item(), 6),
+                "loss_sym": round(loss_dict.get("sym", torch.tensor(0.0)).item(), 6),
+                "loss_contrast": round(loss_dict.get("contrast", torch.tensor(0.0)).item(), 6),
+                "lr": f"{lr_now:.2e}",
+                "step_s": round(total_step_time, 4),
+                "data_s": round(data_wait_time, 4),
+                "gpu_s": round(compute_time, 4),
+            })
+        # “写入时再 flush” 一次，保证进程异常时日志不丢失
+        if (global_step % step_log_interval == 0) or ((step + 1) == len(loader)):
+            step_writer.writerow({...})
             step_fh.flush()
 
         global_step += 1
