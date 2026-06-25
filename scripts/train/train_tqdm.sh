@@ -22,7 +22,7 @@ nvidia-smi
 
 echo "Starting PPI-Sifter Training！ $(date)"
 
-CUDA_VISIBLE_DEVICES=3 python scripts/train/train_tqdm_log.py
+CUDA_VISIBLE_DEVICES=2 python scripts/train/train_tqdm_log.py
 
 echo "Completed at $(date)"
 
