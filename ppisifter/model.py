@@ -134,8 +134,8 @@ class PPISifter(nn.Module):
                 # 每层导出 pooled pair repr（detach 可选，训练时不 detach）
                 s_a_l = self.pool_a(h_a, mask_a)   # (B, d_model)
                 s_b_l = self.pool_b(h_b, mask_b)   # (B, d_model)
-                raw_repr = self._make_pair_repr(s_a_l, s_b_l)
-                layer_reprs[i] = self.pair_repr_norm(raw_repr) # (B, 4*d_model)
+                # 不要在这里加 pair_repr_norm，让 ContrastProjectionHead 自己处理
+                layer_reprs[i] = self._make_pair_repr(s_a_l, s_b_l)  # 去掉 pair_repr_norm
 
 
         s_a = self.pool_a(h_a, mask_a)

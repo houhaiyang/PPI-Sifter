@@ -83,6 +83,7 @@ class SupervisedContrastiveLoss(nn.Module):
         # ── 相似度矩阵 ────────────────────────────────────────────────────
         # features 已 L2 归一化，matmul 结果值域 [-1, 1]
         # 除以 temperature 后值域 [-1/t, 1/t]
+        features = F.normalize(features, dim=-1, eps=1e-6)  # 双保险归一化
         sim = torch.matmul(features, features.T)            # (B, B)，值域 [-1,1]
         sim = sim / self.temperature                         # 放大到 [-1/t, 1/t]
 
@@ -99,23 +100,26 @@ class SupervisedContrastiveLoss(nn.Module):
         # ── log-sum-exp trick（手动实现，保证反向传播无 nan） ──────────────
         # 第 1 步：对角线置 -inf，排除自身
         sim_no_self = sim.masked_fill(mask_self, float("-inf"))
+        # 直接用 torch.logsumexp，自动处理 -inf
+        log_partition = torch.logsumexp(sim_no_self, dim=1, keepdim=True)  # (B, 1)
 
-        # 第 2 步：每行减去最大值（数值稳定化，等价于 log-sum-exp trick）
-        # 注意：只取非 -inf 的最大值
-        row_max = sim_no_self.clone()
-        row_max[row_max == float("-inf")] = 0.0
-        row_max = row_max.amax(dim=1, keepdim=True).detach()  # detach 防止梯度穿透 max
 
-        sim_shifted = sim_no_self - row_max                   # 平移后最大值=0，exp 不溢出
+        # # 第 2 步：每行减去最大值（数值稳定化，等价于 log-sum-exp trick）
+        # # 注意：只取非 -inf 的最大值
+        # row_max = sim_no_self.clone()
+        # row_max[row_max == float("-inf")] = 0.0
+        # row_max = row_max.amax(dim=1, keepdim=True).detach()  # detach 防止梯度穿透 max
+        #
+        # sim_shifted = sim_no_self - row_max                   # 平移后最大值=0，exp 不溢出
+        #
+        # # 第 3 步：计算 log partition（分母）
+        # exp_sim = torch.exp(sim_shifted)                       # 对角线位置 exp(-inf)=0
+        # log_partition = torch.log(
+        #     exp_sim.sum(dim=1, keepdim=True).clamp(min=1e-8)
+        # )                                                      # (B, 1)
 
-        # 第 3 步：计算 log partition（分母）
-        exp_sim = torch.exp(sim_shifted)                       # 对角线位置 exp(-inf)=0
-        log_partition = torch.log(
-            exp_sim.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        )                                                      # (B, 1)
-
-        # 第 4 步：log 概率 = sim_shifted - log_partition
-        log_prob = sim_shifted - log_partition                 # (B, B)
+        # 第 4 步：log 概率 = sim_no_self - log_partition
+        log_prob = sim_no_self - log_partition                 # (B, B)
 
         # ── 每行正样本的平均 log-prob ──────────────────────────────────────
         pos_count = mask_pos.float().sum(dim=1).clamp(min=1.0)
