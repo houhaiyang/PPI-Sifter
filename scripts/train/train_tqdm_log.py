@@ -428,10 +428,10 @@ def main():
         train_loader = DataLoader(
             train_set,
             batch_size=cfg["train"]["batch_size"],
-            shuffle=False,
+            shuffle=True,       # ← 非常重要
             num_workers=cfg["data"].get("num_workers", 4),
             collate_fn=collate_fn,
-            pin_memory=True,    # ← 改这里，依赖预先排序保证多样性
+            pin_memory=True,
             prefetch_factor=cfg["data"].get("prefetch_factor", 2),
             persistent_workers=(cfg["data"].get("num_workers", 4) > 0),
         )
