@@ -88,48 +88,34 @@ class SupervisedContrastiveLoss(nn.Module):
         sim = sim / self.temperature                         # 放大到 [-1/t, 1/t]
 
         # ── mask 构造 ─────────────────────────────────────────────────────
+        # mask
         mask_self = torch.eye(B, dtype=torch.bool, device=device)
         labels_2d = labels.view(-1, 1)
-        mask_pos  = (labels_2d == labels_2d.T) & ~mask_self  # 同类非自身
+        mask_pos = (labels_2d == labels_2d.T) & ~mask_self
 
-        # 过滤掉没有正样本的行
         has_pos = mask_pos.any(dim=1)
         if not has_pos.any():
             return torch.tensor(0.0, device=device, requires_grad=True)
 
-        # ── log-sum-exp trick（手动实现，保证反向传播无 nan） ──────────────
-        # 第 1 步：对角线置 -inf，排除自身
+        # sim
+        features = F.normalize(features.float(), dim=-1, eps=1e-6)
+        sim = torch.matmul(features, features.T) / self.temperature
+
+        # 排除自身
         sim_no_self = sim.masked_fill(mask_self, float("-inf"))
-        # 直接用 torch.logsumexp，自动处理 -inf
-        log_partition = torch.logsumexp(sim_no_self, dim=1, keepdim=True)  # (B, 1)
 
+        # 稳定 logsumexp
+        log_partition = torch.logsumexp(sim_no_self, dim=1, keepdim=True)
+        log_prob = sim_no_self - log_partition
 
-        # # 第 2 步：每行减去最大值（数值稳定化，等价于 log-sum-exp trick）
-        # # 注意：只取非 -inf 的最大值
-        # row_max = sim_no_self.clone()
-        # row_max[row_max == float("-inf")] = 0.0
-        # row_max = row_max.amax(dim=1, keepdim=True).detach()  # detach 防止梯度穿透 max
-        #
-        # sim_shifted = sim_no_self - row_max                   # 平移后最大值=0，exp 不溢出
-        #
-        # # 第 3 步：计算 log partition（分母）
-        # exp_sim = torch.exp(sim_shifted)                       # 对角线位置 exp(-inf)=0
-        # log_partition = torch.log(
-        #     exp_sim.sum(dim=1, keepdim=True).clamp(min=1e-8)
-        # )                                                      # (B, 1)
-
-        # 第 4 步：log 概率 = sim_no_self - log_partition
-        log_prob = sim_no_self - log_partition                 # (B, B)
-
-        # ── 每行正样本的平均 log-prob ──────────────────────────────────────
+        # 关键：不要再用 mask * log_prob，避免 0 * -inf = nan
         pos_count = mask_pos.float().sum(dim=1).clamp(min=1.0)
-        mean_log_prob_pos = (mask_pos.float() * log_prob).sum(dim=1) / pos_count
+        log_prob_masked = log_prob.masked_fill(~mask_pos, 0.0)
+        mean_log_prob_pos = log_prob_masked.sum(dim=1) / pos_count
 
-        # ── 只对有正样本的行求均值 ────────────────────────────────────────
         loss = -(self.temperature / self.base_temperature) * mean_log_prob_pos
         loss = loss[has_pos].mean()
 
-        # ── 最终哨兵：如果仍然 nan/inf，打印诊断信息并返回 0 ───────────────
         if not torch.isfinite(loss):
             warnings.warn(
                 f"[SupervisedContrastiveLoss] loss={loss.item():.4f}，已置 0。"
