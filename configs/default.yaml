@@ -64,6 +64,7 @@ train:
   warmup_epochs:       1
   scheduler:           cosine
   val_interval:        1
+  step_log_interval: 100  # 示每 xxx 个 step 记录一条到 step_log.csv
   # 主任务损失权重
   pos_weight:          2.0
   focal_alpha:         0.9
