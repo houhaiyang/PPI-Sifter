@@ -60,6 +60,8 @@ class PPISifter(nn.Module):
         self.pool_b = AttentionPooling(d_model)
 
         mlp_in = d_model * 4
+        # 对 pair_repr 做归一化，稳定对比学习输入
+        self.pair_repr_norm = nn.LayerNorm(mlp_in)
         self.classifier = nn.Sequential(
             nn.Linear(mlp_in, d_model * 2),
             nn.LayerNorm(d_model * 2),
@@ -132,11 +134,14 @@ class PPISifter(nn.Module):
                 # 每层导出 pooled pair repr（detach 可选，训练时不 detach）
                 s_a_l = self.pool_a(h_a, mask_a)   # (B, d_model)
                 s_b_l = self.pool_b(h_b, mask_b)   # (B, d_model)
-                layer_reprs[i] = self._make_pair_repr(s_a_l, s_b_l)  # (B, 4*d_model)
+                raw_repr = self._make_pair_repr(s_a_l, s_b_l)
+                layer_reprs[i] = self.pair_repr_norm(raw_repr) # (B, 4*d_model)
+
 
         s_a = self.pool_a(h_a, mask_a)
         s_b = self.pool_b(h_b, mask_b)
         pair_repr = self._make_pair_repr(s_a, s_b)  # (B, 4*d_model)
+        pair_repr = self.pair_repr_norm(pair_repr)  # ← 加这行
 
         logits = self.classifier(pair_repr).squeeze(-1)
         prob   = torch.sigmoid(logits)
