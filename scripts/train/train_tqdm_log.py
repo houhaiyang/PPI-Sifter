@@ -236,7 +236,7 @@ def train_one_epoch(
                 contrast_loss=contrast_loss,
             )
             # 临时调试，确认哪个子损失是 nan
-            print({k: v.item() for k, v in loss_dict.items()})
+            # print({k: v.item() for k, v in loss_dict.items()})
             loss = loss_dict["total"] / grad_accum
 
         scaler.scale(loss).backward()
