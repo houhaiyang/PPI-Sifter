@@ -183,6 +183,15 @@ def train_one_epoch(
     all_probs = []
     all_labels = []
 
+    # return_attn = cfg["train"].get("return_attention", False)
+    # return_layer = (
+    #     cfg["train"].get("return_layer_reprs", True)
+    #     and contrast_head is not None
+    # )
+    # layer_weights = cfg.get("contrast", {}).get("layer_weights", None)
+    # grad_accum = cfg["train"].get("grad_accum_steps", 1)
+    #
+
     return_attn = cfg["train"].get("return_attention", False)
     return_layer = (
         cfg["train"].get("return_layer_reprs", True)
@@ -190,6 +199,8 @@ def train_one_epoch(
     )
     layer_weights = cfg.get("contrast", {}).get("layer_weights", None)
     grad_accum = cfg["train"].get("grad_accum_steps", 1)
+    step_log_interval = cfg["train"].get("step_log_interval", 100)
+
 
     all_params = list(model.parameters())
     if contrast_head is not None:
@@ -259,13 +270,13 @@ def train_one_epoch(
         lr_now = optimizer.param_groups[0]["lr"]
 
         # ── step 级 CSV 记录 ──────────────────────────────────────────────
-        step_log_interval = cfg["train"].get("step_log_interval", 100)
-
+        # step_log_interval = cfg["train"].get("step_log_interval", 100)
+        global_step += 1
         if (global_step % step_log_interval == 0) or ((step + 1) == len(loader)):
             step_writer.writerow({
                 "global_step": global_step,
                 "epoch": epoch,
-                "step_in_epoch": step,
+                "step_in_epoch": step + 1,
                 "loss_total": round(loss_dict["total"].item(), 6),
                 "loss_wbce": round(loss_dict.get("wbce", torch.tensor(0.0)).item(), 6),
                 "loss_focal": round(loss_dict.get("focal", torch.tensor(0.0)).item(), 6),
@@ -277,12 +288,7 @@ def train_one_epoch(
                 "data_s": round(data_wait_time, 4),
                 "gpu_s": round(compute_time, 4),
             })
-        # “写入时再 flush” 一次，保证进程异常时日志不丢失
-        if (global_step % step_log_interval == 0) or ((step + 1) == len(loader)):
-            step_writer.writerow({...})
             step_fh.flush()
-
-        global_step += 1
 
         if (step + 1) % PROGRESS_UPDATE_INTERVAL == 0 or (step + 1) == len(loader):
             running_loss = total_loss_sum / (step + 1)
